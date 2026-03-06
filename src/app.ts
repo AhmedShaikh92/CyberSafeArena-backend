@@ -2,12 +2,12 @@ import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
-import { config } from './src/config/index';
-import authRoutes from './src/routes/auth.routes';
-import userRoutes from './src/routes/user.routes';
-import gameRoutes from './src/routes/game.routes';
-import aarRoutes from './src/routes/aar.routes';
-import progressionRoutes from './src/routes/progression.routes';
+import { config } from './config/index';
+import authRoutes from './routes/auth.routes';
+import userRoutes from './routes/user.routes';
+import gameRoutes from './routes/game.routes';
+import aarRoutes from './routes/aar.routes';
+import progressionRoutes from './routes/progression.routes';
 
 export function createApp(): express.Application {
   const app = express();

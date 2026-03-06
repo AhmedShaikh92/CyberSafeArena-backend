@@ -1,11 +1,11 @@
 import { createServer } from "http";
 import { Server as SocketIOServer } from "socket.io";
 import { createApp } from "./app";
-import { connectDatabase } from "./src/config/database";
-import { config } from "./src/config/index";
-import { GameManager } from "./src/services/gameManager";
-import { SocketHandlers } from "./src/socket/handlers";
-import { RoomHandlers } from "./src/socket/roomHandlers";
+import { connectDatabase } from "./config/database";
+import { config } from "./config/index";
+import { GameManager } from "./services/gameManager";
+import { SocketHandlers } from "./socket/handlers";
+import { RoomHandlers } from "./socket/roomHandlers";
 async function startServer(): Promise<void> {
   try {
     // Connect to database
