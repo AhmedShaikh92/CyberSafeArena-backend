@@ -118,7 +118,7 @@ export class ProgressionService {
   // ─── Leaderboard ─────────────────────────────────────────────────────────
   public async getLeaderboard(limit: number = 100, offset: number = 0) {
     const users = await User.find()
-      .select('username xp rank level wins losses gamesPlayed -passwordHash')
+      .select('username xp rank level wins losses gamesPlayed')
       .sort({ xp: -1 })
       .limit(limit)
       .skip(offset)
