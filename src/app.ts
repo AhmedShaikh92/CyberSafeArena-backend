@@ -39,12 +39,17 @@ export function createApp(): express.Application {
   app.use(express.urlencoded({ limit: '10mb', extended: true }));
 
   // Health check endpoint
-  app.get('/health', (req, res) => {
+  app.get('/health', (req: express.Request, res: express.Response) => {
     res.json({ status: 'ok', timestamp: new Date().toISOString() });
   });
 
-  // API version
-  app.get('/api/version', (req, res) => {
+//ping to prevent idling on Render
+setInterval(() => {
+  fetch('https://pc-builder-backend-1w1d.onrender.com/api/health')
+}, 5 * 60 * 1000); // Every 5 minutes
+  
+// API version
+  app.get('/api/version', (req: express.Request, res: express.Response) => {
     res.json({ version: '1.0.0' });
   });
 
