@@ -71,14 +71,8 @@ router.get('/:gameId/briefing', authenticateToken, (req: Request, res: Response)
     }
 
     // Determine role — handle both Set and Array for red/blue team members
-    let userRole: 'red_team' | 'blue_team' = 'blue_team';
-    const redTeam = game.redTeamUsers ?? game.redTeam ?? game.players?.redTeam;
-    if (redTeam) {
-      const isRed = typeof redTeam.has === 'function'
-        ? redTeam.has(userId)
-        : Array.isArray(redTeam) && redTeam.some((u: any) => (u?.userId ?? u?.id ?? u) === userId);
-      if (isRed) userRole = 'red_team';
-    }
+    const userRole: 'red_team' | 'blue_team' =
+    game.redPlayer === userId ? 'red_team' : 'blue_team';
 
     // scenario may be nested as game.scenario or game.state.scenario
     const scenario = game.scenario ?? game.state?.scenario;

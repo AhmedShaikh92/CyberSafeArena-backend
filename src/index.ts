@@ -11,12 +11,14 @@ async function startServer(): Promise<void> {
     // Connect to database
     await connectDatabase();
 
+    // Initialize game manager
+    const gameManager = new GameManager();
     // Create Express app
-    const app = createApp();
+    const app = createApp(gameManager);
 
     // Create HTTP server
     const httpServer = createServer(app);
-
+    
     // Setup Socket.io
     const io = new SocketIOServer(httpServer, {
       cors: {
@@ -24,9 +26,7 @@ async function startServer(): Promise<void> {
         credentials: true,
       },
     });
-
-    // Initialize game manager
-    const gameManager = new GameManager();
+    
 
     // Setup Socket handlers
     const socketHandlers = new SocketHandlers(gameManager);

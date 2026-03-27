@@ -303,19 +303,40 @@ export const scenarios: Record<
   },
 };
 
+// Valid scenario types and difficulties for runtime validation
+const VALID_SCENARIO_TYPES = new Set(Object.keys(scenarios));
+const VALID_DIFFICULTIES = new Set<IGameScenario['difficulty']>(['easy', 'medium', 'hard']);
+
 export function getRandomScenario(difficulty?: IGameScenario['difficulty']): IGameScenario {
   const scenarioTypes = Object.keys(scenarios) as IGameScenario['type'][];
   const randomType = scenarioTypes[Math.floor(Math.random() * scenarioTypes.length)];
-  const difficultyLevel = difficulty || (['easy', 'medium', 'hard'] as const)[
-    Math.floor(Math.random() * 3)
-  ];
+  const difficultyLevel =
+    difficulty && VALID_DIFFICULTIES.has(difficulty)
+      ? difficulty
+      : (['easy', 'medium', 'hard'] as const)[Math.floor(Math.random() * 3)];
 
   return scenarios[randomType][difficultyLevel];
 }
 
+/**
+ * Safe scenario lookup — never throws.
+ * Falls back to a random scenario if type or difficulty is invalid.
+ */
 export function getScenario(
   type: IGameScenario['type'],
-  difficulty: IGameScenario['difficulty']
+  difficulty: IGameScenario['difficulty'],
 ): IGameScenario {
+  // Validate type
+  if (!VALID_SCENARIO_TYPES.has(type)) {
+    console.warn(`[Scenarios] Unknown scenario type "${type}" — falling back to random`);
+    return getRandomScenario(VALID_DIFFICULTIES.has(difficulty) ? difficulty : undefined);
+  }
+
+  // Validate difficulty
+  if (!VALID_DIFFICULTIES.has(difficulty)) {
+    console.warn(`[Scenarios] Unknown difficulty "${difficulty}" — defaulting to medium`);
+    difficulty = 'medium';
+  }
+
   return scenarios[type][difficulty];
 }

@@ -8,8 +8,9 @@ import userRoutes from './routes/user.routes';
 import gameRoutes from './routes/game.routes';
 import aarRoutes from './routes/aar.routes';
 import progressionRoutes from './routes/progression.routes';
+import { GameManager } from './services/gameManager';
 
-export function createApp(): express.Application {
+export function createApp(gameManager?: GameManager): express.Application {
   const app = express();
 
   // Security middleware
@@ -38,6 +39,10 @@ export function createApp(): express.Application {
   app.use(express.json({ limit: '10mb' }));
   app.use(express.urlencoded({ limit: '10mb', extended: true }));
 
+  if (gameManager) {
+    app.set('gameManager', gameManager);
+  }
+  
   // Health check endpoint
   app.get('/health', (req: express.Request, res: express.Response) => {
     res.json({ status: 'ok', timestamp: new Date().toISOString() });

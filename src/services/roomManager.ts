@@ -13,7 +13,6 @@ import type {
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-/** Generates a short uppercase room code like "XK7F" */
 function generateRoomCode(): string {
   return Math.random().toString(36).substring(2, 6).toUpperCase();
 }
@@ -24,16 +23,46 @@ const LEVEL_NAMES: Record<1 | 2 | 3, string> = {
   3: 'Elite',
 };
 
+// Valid values mirrored from types — used for runtime sanitization of client input
+const VALID_SCENARIO_TYPES = new Set<ScenarioType>([
+  'random',
+  'brute_force',
+  'sql_injection',
+  'xss',
+  'phishing',
+  'jwt_manipulation',
+  'network_anomaly',
+]);
+
+const VALID_DIFFICULTIES = new Set<DifficultyType>(['easy', 'medium', 'hard']);
+
+/** Sanitize a scenario value from the client — falls back to 'random' if unknown */
+function sanitizeScenario(value: unknown): ScenarioType {
+  if (typeof value === 'string' && VALID_SCENARIO_TYPES.has(value as ScenarioType)) {
+    return value as ScenarioType;
+  }
+  console.warn(`[RoomManager] Invalid scenario type "${value}" — defaulting to random`);
+  return 'random';
+}
+
+/** Sanitize a difficulty value from the client — falls back to 'medium' if unknown */
+function sanitizeDifficulty(value: unknown): DifficultyType {
+  if (typeof value === 'string' && VALID_DIFFICULTIES.has(value as DifficultyType)) {
+    return value as DifficultyType;
+  }
+  console.warn(`[RoomManager] Invalid difficulty "${value}" — defaulting to medium`);
+  return 'medium';
+}
+
 // ─── RoomManager ─────────────────────────────────────────────────────────────
 
 export class RoomManager {
-  private rooms: Map<string, IRoom> = new Map();           // roomId  -> IRoom
-  private roomCodes: Map<string, string> = new Map();      // roomCode -> roomId
-  private userRoomMap: Map<string, string> = new Map();    // userId  -> roomId
+  private rooms: Map<string, IRoom> = new Map();
+  private roomCodes: Map<string, string> = new Map();
+  private userRoomMap: Map<string, string> = new Map();
 
   private gameManager: GameManager;
 
-  /** Fires when start_room creates a game. Socket layer subscribes to this. */
   public onMatchFound: ((
     gameId: string,
     redMember: IRoomMember,
@@ -55,12 +84,10 @@ export class RoomManager {
     hostSocketId: string,
     config: Partial<IRoomConfig> = {},
   ): IRoom | { error: string } {
-    // User already in a room or game
     if (this.userRoomMap.has(hostUserId)) {
       return { error: 'Already in a room' };
     }
 
-    // Generate a unique room code
     let roomCode = generateRoomCode();
     let attempts = 0;
     while (this.roomCodes.has(roomCode) && attempts < 10) {
@@ -86,9 +113,10 @@ export class RoomManager {
       hostUserId,
       members: [hostMember],
       config: {
-        scenario: config.scenario ?? 'random',
-        difficulty: config.difficulty ?? 'medium',
-        maxPlayers: 2, // always 1v1
+        // Sanitize on creation too — client could send anything
+        scenario:   sanitizeScenario(config.scenario),
+        difficulty: sanitizeDifficulty(config.difficulty),
+        maxPlayers: 2,
       },
       createdAt: Date.now(),
     };
@@ -122,7 +150,6 @@ export class RoomManager {
       return { error: 'Room is full' };
     }
 
-    // Enforce opposite roles — host is one role, joiner must be the other
     const hostRole = room.members[0]?.role;
     const requiredRole: UserRole = hostRole === 'red_team' ? 'blue_team' : 'red_team';
 
@@ -148,11 +175,6 @@ export class RoomManager {
 
   // ─── Leave ─────────────────────────────────────────────────────────────────
 
-  /**
-   * Remove a member from their room.
-   * Returns the room if it still exists (so caller can notify remaining members),
-   * or null if the room was dissolved (host left).
-   */
   public leaveRoom(userId: string): { room: IRoom | null; wasHost: boolean; roomId: string } | null {
     const roomId = this.userRoomMap.get(userId);
     if (!roomId) return null;
@@ -166,7 +188,6 @@ export class RoomManager {
     room.members = room.members.filter((m) => m.userId !== userId);
 
     if (wasHost || room.members.length === 0) {
-      // Dissolve room — remove all remaining members too
       for (const m of room.members) {
         this.userRoomMap.delete(m.userId);
       }
@@ -215,16 +236,17 @@ export class RoomManager {
 
     if (room.hostUserId !== hostUserId) return { error: 'Only the host can update config' };
 
-    room.config = { ...room.config, ...patch, maxPlayers: 2 };
+    // Sanitize before merging — reject unknown scenario/difficulty values
+    const safePatch: Partial<IRoomConfig> = { ...patch };
+    if (patch.scenario  !== undefined) safePatch.scenario  = sanitizeScenario(patch.scenario);
+    if (patch.difficulty !== undefined) safePatch.difficulty = sanitizeDifficulty(patch.difficulty);
+
+    room.config = { ...room.config, ...safePatch, maxPlayers: 2 };
     return room;
   }
 
   // ─── Start ─────────────────────────────────────────────────────────────────
 
-  /**
-   * Host triggers start. Exactly 2 members required (one red, one blue).
-   * Creates a game via GameManager and fires onMatchFound.
-   */
   public startRoom(hostUserId: string): { error: string } | null {
     const roomId = this.userRoomMap.get(hostUserId);
     if (!roomId) return { error: 'Not in a room' };
@@ -243,43 +265,42 @@ export class RoomManager {
       return { error: 'Need one red team and one blue team player' };
     }
 
-    // Resolve scenario
-    const scenarioType = room.config.scenario;
+    // Re-sanitize at start time — last line of defence before getScenario
+    const scenarioType = sanitizeScenario(room.config.scenario);
+    const difficulty   = sanitizeDifficulty(room.config.difficulty);
+
     const rawScenario =
       scenarioType === 'random'
-        ? getRandomScenario()
-        : getScenario(scenarioType as Exclude<ScenarioType, 'random'>, room.config.difficulty);
+        ? getRandomScenario(difficulty)
+        : getScenario(scenarioType as Exclude<ScenarioType, 'random'>, difficulty);
 
-    // Override difficulty if specified
-    const scenario = { ...rawScenario, difficulty: room.config.difficulty };
+    const scenario = { ...rawScenario, difficulty };
 
-    // Create the actual game
     const game = this.gameManager.createRoomGame(
       redMember.userId,
       blueMember.userId,
       scenario,
     );
 
-    // Build match_found payloads — each player gets their own perspective
     const baseOpponent = (member: IRoomMember) => ({
-      userId: member.userId,
+      userId:   member.userId,
       username: member.username,
-      level: member.level,
+      level:    member.level,
     });
 
     const redPayload: IMatchFoundPayload = {
-      gameId: game.gameId,
-      role: 'red_team',
-      opponent: baseOpponent(blueMember),
-      scenario: scenario.type,
+      gameId:     game.gameId,
+      role:       'red_team',
+      opponent:   baseOpponent(blueMember),
+      scenario:   scenario.type,
       difficulty: scenario.difficulty as DifficultyType,
     };
 
     const bluePayload: IMatchFoundPayload = {
-      gameId: game.gameId,
-      role: 'blue_team',
-      opponent: baseOpponent(redMember),
-      scenario: scenario.type,
+      gameId:     game.gameId,
+      role:       'blue_team',
+      opponent:   baseOpponent(redMember),
+      scenario:   scenario.type,
       difficulty: scenario.difficulty as DifficultyType,
     };
 
@@ -290,10 +311,9 @@ export class RoomManager {
     this.rooms.delete(roomId);
     this.roomCodes.delete(room.roomCode);
 
-    // Notify socket layer
     this.onMatchFound?.(game.gameId, redMember, blueMember, { red: redPayload, blue: bluePayload });
 
-    return null; // null = success
+    return null;
   }
 
   // ─── Getters ───────────────────────────────────────────────────────────────
@@ -312,7 +332,6 @@ export class RoomManager {
     return roomId ? this.rooms.get(roomId) : undefined;
   }
 
-  /** Serialize members for socket emission (strip socketId) */
   public serializeMembers(room: IRoom) {
     return room.members.map(({ socketId: _s, ...rest }) => rest);
   }
